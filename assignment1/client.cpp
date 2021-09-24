@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
     struct sockaddr server_addr; // Source address of server
     socklen_t len = sizeof(server_addr);
     i = 0;
-    int t_out, timeout = client.timeout;
+    int t_out, c_tout = client.timeout;
 
     message finish[client.treq];
     memset(finish, 0, client.treq*sizeof(finish));
@@ -170,15 +170,16 @@ int main(int argc, char *argv[])
     while(i< (int)treq)
     {   
         // printf("Enters the while loop: i: %d treq: %d\n", i, (int)treq);
-        if(timeout == 0)
+        if(c_tout == 0)
         {
 			printf("time = 0");
             t_out = -1;
         }
         else
         {
-            t_out = client.timeout*1000;
+            t_out = c_tout*1000;
         }
+
 
         if(poll(check ,1 ,t_out) == -1 || poll(check ,1 ,t_out) == -0){
 

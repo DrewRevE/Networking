@@ -12,6 +12,13 @@
 #include <math.h>
 #include <unistd.h>
 
+template <typename T>
+void printBytes(T *buf, size_t len){
+    for(int j = 0; j < (int)len; ++j) {
+      printf("%02x ", ((uint8_t *)buf)[j]);
+    }
+    std::cout << std::endl;
+}
 
 using std::cout;
 using std::endl;
@@ -26,17 +33,14 @@ struct client_arguments {
 
 typedef struct message {
   uint32_t seq;
-  float theta;
-  float delta;
+  long double theta;
+  long double delta;
   message(){
     seq = 0;
     theta = 0;
     delta = 0;
   }
 }message;
-
-
-
 
 
 error_t client_parser(int key, char *arg, struct argp_state *state) {
@@ -90,18 +94,13 @@ client_arguments client_parseopt(int argc, char *argv[]) {
   printf("Got port %d with n=%d timeout=%d \n", args.ip_port.sin_port, args.treq, args.timeout);
 
   return args;
-		   
-	
-
 }
-
-
 
 int main(int argc, char *argv[])
 {
 
   client_arguments client = client_parseopt(argc, argv);
-  int sock = socket(AF_INET, SOCK_STREAM, 0);
+  int sock = socket(AF_INET, SOCK_DGRAM, 0);
   struct sockaddr_in serv_addr = client.ip_port;
   if (sock < 0)
     {
@@ -114,11 +113,11 @@ int main(int argc, char *argv[])
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_port = htons(client.ip_port.sin_port);
 
-  if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-      perror("\nConnection Failed \n");
+  // if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+  //   {
+  //     perror("\nConnection Failed \n");
 		
-    }
+  //   }
 
     
   uint32_t timeout = htonl(client.timeout);
@@ -129,12 +128,12 @@ int main(int argc, char *argv[])
   while(i < (int)treq)
     {	
       //get sequence to be sent
-      uint32_t seq = i +1;
+      uint32_t seq = i + 1;
       seq = htonl(seq);
 		
       //version already initialized, doesnt change but needs to be convertion
       uint16_t ver = 7;
-      ver = htonl(ver);
+      ver = htons(ver);
 
       //get the time stamp to be sent
       struct timespec curr_t;
@@ -145,12 +144,14 @@ int main(int argc, char *argv[])
 
       uint8_t data[22]; //data to be sent seq , version, seconds, nano seconds,(8 + 8 + 2 + 4)
 
-      memcpy(data,&seq, 4);
-      memcpy(data,&seq, 2);
-      memcpy(data,&seq, 8);
-      memcpy(data,&seq, 8);
+      *(uint32_t *)data = seq;
+      *(uint16_t *)(data + 4) = ver;
+      *(uint64_t *)(data + 6) = htobe64(sec);
+      *(uint64_t *)(data + 14) = htobe64(nsec);	
 
-      sendto(sock, data,22, 0, (const struct sockaddr *) &serv_addr, sizeof(serv_addr));
+      printBytes(data, 22);
+      
+      sendto(sock, data, 22, 0, (const struct sockaddr *) &serv_addr, sizeof(serv_addr));
       i++;
     }
 
@@ -194,9 +195,8 @@ int main(int argc, char *argv[])
       }
 
       uint8_t ret_data[38]; 
-      printf("trying to recieve\n");
-      int ret = recvfrom(sock, &ret_data, 38, 0, (struct sockaddr *)&server_addr, &len);
-      printf("recieved\n");
+      int ret = recvfrom(sock, ret_data, 38, 0, (struct sockaddr *)&server_addr, &len);
+      printBytes(ret_data, 38);
 
       if (ret>= 0) {
 
@@ -216,9 +216,10 @@ int main(int argc, char *argv[])
         memcpy(&ver, ret_data+4,2);
         memcpy(&c_sec, ret_data+6,8);
         memcpy(&c_nsec, ret_data+14,8);
-        memcpy(&s_nsec, ret_data+22,8);
+        memcpy(&s_sec, ret_data+22,8);
         memcpy(&s_nsec, ret_data+30,8);
 
+	//Grab seconds & nsec from recieved buff
         seq = ntohl(seq);
         ver = ntohs(ver);
         c_sec = be64toh(c_sec);
@@ -226,26 +227,20 @@ int main(int argc, char *argv[])
         s_sec = be64toh(s_sec);
         s_nsec = be64toh(s_nsec);
 
-        if(finish[seq-1].seq != 0){
-	  i--;
-        }
-        else
-	  {
-
-	    long double temp = c_nsec/1000000000;
-	    long double t0 = c_sec + temp;
-	    temp = s_nsec/1000000000;
-	    long double t1 = s_sec + temp;
-	    temp = nsec_rn/1000000000;
-	    long double t2 = sec_rn + temp;
+	//calculate delta and theta
+	long double temp = (long double)c_nsec/1000000000;
+	long double t0 = c_sec + temp;
+	temp = (long double)s_nsec/1000000000;
+	long double t1 = s_sec + temp;
+	temp = (long double)nsec_rn/1000000000;
+	long double t2 = sec_rn + temp;
         
-	    float theta = (t1-t0 + t1 - t2)/2;
-	    float delta = t2 - t0;
-	    finish[seq-1].seq = seq;
-	    finish[seq-1].delta = delta;
-	    finish[seq-1].theta = theta;
-
-	  }
+	long double theta = ((t1 - t0) + (t1 - t2))/2;
+	long double delta = t2 - t0;
+	finish[seq-1].seq = seq;
+	finish[seq-1].delta = delta;
+	finish[seq-1].theta = theta;
+	
       }
       else {
 	break;
@@ -259,7 +254,7 @@ int main(int argc, char *argv[])
     if(finish[i].seq == 0)
       printf("%d: Dropped\n", i+1);
     else
-      printf("%d: %.4f %.4f\n", i+1, finish[i].theta, finish[i].delta);
+      printf("%d: %.4Lf %.4Lf\n", i+1, finish[i].theta, finish[i].delta);
   }
 
 

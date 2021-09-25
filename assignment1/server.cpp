@@ -12,6 +12,15 @@
 
 using std::cout;
 using std::endl;
+
+template <typename T>
+void printBytes(T *buf, size_t len){
+    for(int j = 0; j < (int)len; ++j) {
+      printf("%02x ", ((uint8_t *)buf)[j]);
+    }
+    std::cout << std::endl;
+}
+
 struct server_arguments {
   int port;
   int drop_perc;
@@ -190,10 +199,11 @@ void rec_data(int new_socket, int drop)
     len = sizeof(client);
 
     // Client sends buffer and recieve here 
-    uint8_t data[22]; 
+    uint8_t data[38]; 
 
-    recvfrom(new_socket, &data, 22, 0, (struct sockaddr *) &client, &len ); 
-
+    recvfrom(new_socket, data, 22, 0, (struct sockaddr *) &client, &len ); 
+    printBytes(data, 22);
+    
     //check for dropped Percentage 
     random = ((rand()%(100+1)+0));
         
@@ -207,30 +217,13 @@ void rec_data(int new_socket, int drop)
       long nsec = curr_t.tv_nsec;
 
       //store what the client sent
-      uint32_t seq_cli;
-      uint64_t sec_cli;
-      uint64_t nsec_cli;
-        
-      memcpy(&seq_cli, data, 4);
-      memcpy(&sec_cli, data+6, 8);
-      memcpy(&nsec_cli,data+14,  8);
-		
-      seq_cli = ntohl(seq_cli); 
-      sec_cli = be64toh(sec_cli);
-      nsec_cli = be64toh(nsec_cli);
-
+      uint32_t seq_cli = *(uint32_t *)(data);
+      
       //this function call should change the parameters accordingly 
       client_list = update_list(client_list, client, seq_cli, sec);
 
       //reconstruct data buffer to send back content
-      uint8_t ret_data[38];
-
-      seq_cli = htonl(seq_cli); 
-      sec_cli = htobe64(sec_cli);
-      nsec_cli = htobe64(nsec_cli);
-
-      uint16_t ver_cli = 7;
-      ver_cli = htons(ver_cli);
+      //uint8_t ret_data[38];
 
       uint64_t serv_sec_nb = htobe64(sec);
       uint64_t serv_nanosec_nb = htobe64(nsec);
@@ -238,18 +231,12 @@ void rec_data(int new_socket, int drop)
       //data to be sent seq , version, seconds, nano seconds,
       // server neconds, server nanoseconds(8 + 8 + 2 + 4 + 8 + 8)
 
-      memcpy(ret_data, &seq_cli, 4);
-      memcpy(ret_data+4, &ver_cli, 2);
-      memcpy(ret_data+6, &sec_cli, 8);
-      memcpy(ret_data+14, &nsec_cli, 8);
-      memcpy(ret_data+22, &serv_sec_nb, 8);
-      memcpy(ret_data+30, &serv_nanosec_nb, 8);
+      *(uint64_t *)(data + 22) = serv_sec_nb;
+      *(uint64_t *)(data + 30) = serv_nanosec_nb;      
 
       //sent to client
-      printf("while  befote loop check \n");
-      sendto(new_socket, ret_data, 38, 0, (struct sockaddr *) &client.sin_addr, sizeof(client));
-      printf("while loop check \n");
-
+      printBytes(data, 38);
+      sendto(new_socket, data, 38, 0, (struct sockaddr *) &client, sizeof(client));
     }
 
   }

@@ -14,5 +14,6 @@ client.o:   client.cpp
 
 server.o:   server.cpp
 
-clean:  rm -rf *~ *.o test  rm server   rm client
-.PHONY : clean all
+clean:
+	rm -rf server client *.o
+

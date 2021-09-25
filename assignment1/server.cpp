@@ -181,10 +181,13 @@ Node *update_list(Node *head, sockaddr_in ip_port, int new_seq, time_t time)
 void rec_data(int new_socket, int drop)
 {
   Node *client_list = NULL;
+  struct sockaddr_in client; // Client address
+  socklen_t len;
+  int random;
 
   while(true){
-    struct sockaddr_in client; // Client address
-    socklen_t len = sizeof(client);
+    //client = NULL;
+    len = sizeof(client);
 
     // Client sends buffer and recieve here 
     uint8_t data[22]; 
@@ -192,7 +195,7 @@ void rec_data(int new_socket, int drop)
     recvfrom(new_socket, &data, 22, 0, (struct sockaddr *) &client, &len ); 
 
     //check for dropped Percentage 
-    int random = ((rand()%(100+1)+0));
+    random = ((rand()%(100+1)+0));
         
     if(drop == 0 || random > drop){
 
@@ -256,10 +259,13 @@ void rec_data(int new_socket, int drop)
 
 void create(struct server_arguments args, int servSock){
 
+  int new_socket;
+
   // Construct local address structure
   struct sockaddr_in servAddr; // Local address
   int add_len = sizeof(servAddr);
   memset(&servAddr, 0, sizeof(servAddr)); // Zero out structure
+
   servAddr.sin_family = AF_INET; // IPv4 address family
   servAddr.sin_addr.s_addr = INADDR_ANY; // Any incoming interface
   servAddr.sin_port = htons(args.port); // Local port
@@ -302,7 +308,7 @@ void create(struct server_arguments args, int servSock){
 
 int main(int argc, char *argv[]){
   int servSock;
-  if ((servSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+  if ((servSock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
     perror("socket() failed");
     exit(1);
   }
